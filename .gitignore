@@ -1,0 +1,4 @@
+status.md
+venv/
+__pycache__/
+.env
