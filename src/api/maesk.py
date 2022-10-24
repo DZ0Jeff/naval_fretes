@@ -1,6 +1,8 @@
+import logging
 import requests
 import json
 from time import sleep
+from src.webdriver import get_token
 
 
 def maesk_get_location(cityname:str):
@@ -12,21 +14,24 @@ def maesk_get_location(cityname:str):
     response = requests.get(url, params=querystring)
 
     if response.status_code == 404:
-        raise Exception(f'Erro: {response.status_code}!\n Paramêtro inválido...')
+        raise Exception(json.dumps({ "code": response.status_code, "message": "Paramêtro inválido..."}))
+
+    if response.status_code == 403:
+        raise Exception(json.dumps({ "code": response.status_code, "message": "IP bloqueado ou temporariamente banido..."}))
 
     if response.status_code == 401:
-        raise Exception(f'Erro: {response.status_code}!\n verifique as suas credenciais...')
+        raise Exception(json.dumps({ "code": response.status_code, "message": "verifique as suas credenciais..."}))
 
     if response.status_code != 200:
-        raise Exception(f'Erro: {response.status_code}!')
+        raise Exception(json.dumps({ "code": response.status_code, "message": "Erro de requisição" }))
 
     content = response.content.decode()
     content = content[content.find("{"):content.find("}")+1]
     data = json.loads(content)
 
     return {
-        "city": data['cityName'],
-        "maerskGeoLocationId": data['maerskGeoLocationId']
+        "city": data["cityName"],
+        "maerskGeoLocationId": data["maerskGeoLocationId"]
     }
 
 
@@ -36,17 +41,17 @@ def maesk_get_ship_price(**kwargs):
 
     payload = {
         "from": {
-            "name": kwargs.get('from_name'), #"Santos (Sao Paulo), Brazil",
-            "maerskGeoId": kwargs.get('from_geoid'), #"1BX66GARX9UAH",
+            "name": kwargs.get("from_name"), #"Santos (Sao Paulo), Brazil",
+            "maerskGeoId": kwargs.get("from_geoid"), #"1BX66GARX9UAH",
             "maerskServiceMode": "CY"
         },
         "to": {
-            "name": kwargs.get('to_name'), #"Singapore, Singapore",
-            "maerskGeoId": kwargs.get('to_geoid'), #"0XOP5ISJZK0HR",
+            "name": kwargs.get("to_name"), #"Singapore, Singapore",
+            "maerskGeoId": kwargs.get("to_geoid"), #"0XOP5ISJZK0HR",
             "maerskServiceMode": "CY"
         },
         "commodity": {
-            "name": kwargs.get('commodity'),  #"(With Lithium Batteries) Electronics, electronic appliances, audio, video equipment, telecommunication equipment",
+            "name": kwargs.get("commodity"),  #"(With Lithium Batteries) Electronics, electronic appliances, audio, video equipment, telecommunication equipment",
             "isDangerous": False,
             "dangerousDetails": []
         },
@@ -64,7 +69,7 @@ def maesk_get_ship_price(**kwargs):
             }
         ],
         "unit": "KG",
-        "shipmentPriceCalculationDate": kwargs.get('send_date'),#"2022-10-31",
+        "shipmentPriceCalculationDate": kwargs.get("send_date"),#"2022-10-31",
         "brandCode": "MAEU",
         "customerCode": "30501103219",
         "isSameRequest": False,
@@ -75,15 +80,24 @@ def maesk_get_ship_price(**kwargs):
     headers = {
         "authority": "api.maersk.com",
         "accept": "application/json, text/plain, */*",
-        "akamai-bm-telemetry": kwargs.get('akamai_telemetry') ,
-        "authorization": kwargs.get('bearer_token'),
+        "akamai-bm-telemetry": kwargs.get("akamai_telemetry") ,
+        "authorization": kwargs.get("bearer_token"),
         "content-type": "application/json",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
     }
 
     response = requests.post(url, json=payload, headers=headers)
 
+    if response.status_code == 401:
+        logging.info("Token expired! getting new token")
+        get_token(new_bearer=True)
+        maesk_get_ship_price(**kwargs)
+
     if response.status_code != 200:
-        raise Exception(f'Erro: {response.status_code}!\n verifique as suas credenciais...')
+        raise Exception(json.dumps({ 
+            "code": response.status_code, 
+            "message": "Verifique as suas credenciais..."
+        }))
+
 
     return response.json()
